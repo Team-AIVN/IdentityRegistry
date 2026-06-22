@@ -450,6 +450,62 @@ public class KeycloakAdminUtil {
     }
 
     /**
+     * Creates a user in keycloak without any credential. Used by passwordless flows
+     * (e.g. email OTP) where authentication is handled by a custom grant rather
+     * than a stored password.
+     *
+     * @param user    the user that is going to be created in Keycloak
+     * @param org     the organization that the user belongs to
+     * @param enabled should the user be enabled after it has been created
+     * @throws IOException             is thrown if user could not be created
+     * @throws DuplicatedKeycloakEntry is thrown if the user already exists
+     */
+    public void createUserWithoutCredential(User user, Organization org, boolean enabled) throws IOException, DuplicatedKeycloakEntry {
+        log.debug("Creating user without credential: {}", user.getMrn());
+
+        UserRepresentation kcUser = new UserRepresentation();
+        kcUser.setEnabled(enabled);
+        if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+            kcUser.setUsername(user.getEmail());
+            kcUser.setEmail(user.getEmail());
+            kcUser.setEmailVerified(true);
+        }
+        if (user.getFirstName() != null && !user.getFirstName().trim().isEmpty()) {
+            kcUser.setFirstName(user.getFirstName());
+        }
+        if (user.getLastName() != null && !user.getLastName().trim().isEmpty()) {
+            kcUser.setLastName(user.getLastName());
+        }
+        Map<String, List<String>> attr = new HashMap<>();
+        attr.put("org", Collections.singletonList(org.getMrn()));
+        attr.put("mrn", Collections.singletonList(user.getMrn()));
+        attr.put("uid", Collections.singletonList(user.constructDN(org)));
+        if (user.getPermissions() != null && !user.getPermissions().trim().isEmpty()) {
+            attr.put("permissions", Collections.singletonList(user.getPermissions()));
+        }
+        if (user.getMrnSubsidiary() != null && !user.getMrnSubsidiary().trim().isEmpty()) {
+            attr.put("subsidiary_mrn", Collections.singletonList(user.getMrnSubsidiary()));
+        }
+        if (user.getHomeMMSUrl() != null && !user.getHomeMMSUrl().trim().isEmpty()) {
+            attr.put("mms_url", Collections.singletonList(user.getHomeMMSUrl()));
+        }
+        kcUser.setAttributes(attr);
+        try (Response ret = getProjectUserRealm().users().create(kcUser)) {
+            String errMsg = ret.readEntity(String.class);
+            if (ret.getStatus() != 201) {
+                if (ret.getStatus() == 409) {
+                    log.error("Creating user failed due to duplicated user {}", errMsg);
+                    throw new DuplicatedKeycloakEntry("User with mrn: " + user.getMrn() + " already exists.", errMsg);
+                } else {
+                    log.error("Creating user failed, status: {}, {}", ret.getStatus(), errMsg);
+                    throw new IOException("User creating failed: " + errMsg);
+                }
+            }
+            log.debug("Created user without credential, status: {}, {}", ret.getStatus(), errMsg);
+        }
+    }
+
+    /**
      * Check the existence of user with email.
      *
      * @param email email of the user
