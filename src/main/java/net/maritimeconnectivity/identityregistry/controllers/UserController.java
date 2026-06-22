@@ -53,6 +53,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -102,7 +103,9 @@ public class UserController extends EntityController<User> {
     )
     @PreAuthorize("hasRole('USER_ADMIN') and @accessControlUtil.hasAccessToOrg(#orgMrn, 'USER_ADMIN')")
     @Transactional(rollbackFor = McpBasicRestException.class)
-    public ResponseEntity<User> createUser(HttpServletRequest request, @PathVariable String orgMrn, @Valid @RequestBody User input, BindingResult bindingResult) throws McpBasicRestException {
+    public ResponseEntity<User> createUser(HttpServletRequest request, @PathVariable String orgMrn,
+                                           @RequestParam(name = "passwordless", required = false, defaultValue = "false") boolean passwordless,
+                                           @Valid @RequestBody User input, BindingResult bindingResult) throws McpBasicRestException {
         ValidateUtil.hasErrors(bindingResult, request);
         Organization org = this.organizationService.getOrganizationByMrnNoFilter(orgMrn);
         if (org != null) {
@@ -130,29 +133,40 @@ public class UserController extends EntityController<User> {
             }
             // If the organization doesn't have its own Identity Provider we create the user in a special keycloak instance
             if ("test-idp".equals(org.getFederationType()) && (org.getIdentityProviderAttributes() == null || org.getIdentityProviderAttributes().isEmpty()) || allowCreateUserForFederatedOrg) {
-                String password;
-                if (certificateUtil.getPkiConfiguration() instanceof P11PKIConfiguration p11PKIConfiguration) {
-                    p11PKIConfiguration.providerLogin();
-                    password = passwordUtil.generatePassword();
-                    p11PKIConfiguration.providerLogout();
-                } else {
-                    password = passwordUtil.generatePassword();
-                }
                 keycloakAU.init(KeycloakAdminUtil.USER_INSTANCE);
-                try {
-                    keycloakAU.checkUserExistence(newUser.getEmail());
-                    keycloakAU.createUser(newUser, password, org, true);
-                } catch (DuplicatedKeycloakEntry dke) {
-                    throw new McpBasicRestException(HttpStatus.CONFLICT, dke.getErrorMessage(), request.getServletPath());
-                } catch (IOException | NullPointerException e) {
-                    throw new McpBasicRestException(HttpStatus.INTERNAL_SERVER_ERROR, MCPIdRegConstants.ERROR_CREATING_KC_USER, request.getServletPath());
-                }
-                try {
-                    // Send email to user with credentials
-                    emailUtil.sendUserCreatedEmail(newUser.getEmail(), newUser.getFirstName() + " " + newUser.getLastName(), newUser.getEmail(), password);
-                } catch (MailException e) {
-                    log.error("Could not send email with credentials to user", e);
-                    throw new McpBasicRestException(HttpStatus.INTERNAL_SERVER_ERROR, "Creation of user was successful, but sending mail with credentials failed.", request.getServletPath());
+                if (passwordless) {
+                    try {
+                        keycloakAU.checkUserExistence(newUser.getEmail());
+                        keycloakAU.createUserWithoutCredential(newUser, org, true);
+                    } catch (DuplicatedKeycloakEntry dke) {
+                        throw new McpBasicRestException(HttpStatus.CONFLICT, dke.getErrorMessage(), request.getServletPath());
+                    } catch (IOException | NullPointerException e) {
+                        throw new McpBasicRestException(HttpStatus.INTERNAL_SERVER_ERROR, MCPIdRegConstants.ERROR_CREATING_KC_USER, request.getServletPath());
+                    }
+                } else {
+                    String password;
+                    if (certificateUtil.getPkiConfiguration() instanceof P11PKIConfiguration p11PKIConfiguration) {
+                        p11PKIConfiguration.providerLogin();
+                        password = passwordUtil.generatePassword();
+                        p11PKIConfiguration.providerLogout();
+                    } else {
+                        password = passwordUtil.generatePassword();
+                    }
+                    try {
+                        keycloakAU.checkUserExistence(newUser.getEmail());
+                        keycloakAU.createUser(newUser, password, org, true);
+                    } catch (DuplicatedKeycloakEntry dke) {
+                        throw new McpBasicRestException(HttpStatus.CONFLICT, dke.getErrorMessage(), request.getServletPath());
+                    } catch (IOException | NullPointerException e) {
+                        throw new McpBasicRestException(HttpStatus.INTERNAL_SERVER_ERROR, MCPIdRegConstants.ERROR_CREATING_KC_USER, request.getServletPath());
+                    }
+                    try {
+                        // Send email to user with credentials
+                        emailUtil.sendUserCreatedEmail(newUser.getEmail(), newUser.getFirstName() + " " + newUser.getLastName(), newUser.getEmail(), password);
+                    } catch (MailException e) {
+                        log.error("Could not send email with credentials to user", e);
+                        throw new McpBasicRestException(HttpStatus.INTERNAL_SERVER_ERROR, "Creation of user was successful, but sending mail with credentials failed.", request.getServletPath());
+                    }
                 }
             } else if (("external-idp".equals(org.getFederationType()) || "own-idp".equals(org.getFederationType())) && !allowCreateUserForFederatedOrg) {
                 throw new McpBasicRestException(HttpStatus.METHOD_NOT_ALLOWED, MCPIdRegConstants.ORG_IS_FEDERATED, request.getServletPath());
