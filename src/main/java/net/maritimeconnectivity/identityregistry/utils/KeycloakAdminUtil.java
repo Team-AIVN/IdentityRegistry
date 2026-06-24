@@ -468,7 +468,8 @@ public class KeycloakAdminUtil {
         if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
             kcUser.setUsername(user.getEmail());
             kcUser.setEmail(user.getEmail());
-            kcUser.setEmailVerified(true);
+            // Verified after the first OTP challenge succeeds, which doubles as the welcome-mail trigger.
+            kcUser.setEmailVerified(false);
         }
         if (user.getFirstName() != null && !user.getFirstName().trim().isEmpty()) {
             kcUser.setFirstName(user.getFirstName());
