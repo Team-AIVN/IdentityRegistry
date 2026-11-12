@@ -9,6 +9,10 @@ jobs:
   build_project:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -34,7 +38,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ghcr.io/maritimeconnectivity/identityregistry
+            ghcr.io/team-aivn/identityregistry
           tags: |
             type=semver,pattern={{version}}
       - name: Build and push Docker image
@@ -44,4 +48,5 @@ jobs:
           platforms: linux/amd64, linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
           push: true
