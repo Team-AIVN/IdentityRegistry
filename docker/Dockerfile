@@ -11,7 +11,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y build-essential file libapr1-dev libssl-dev \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-ADD --checksum=sha256:785fdd99a202f442b085bc718d2fbeb393b85979aa4a2943302118c4acd68630 --unpack=true https://dlcdn.apache.org/tomcat/tomcat-connectors/native/2.0.16/source/tomcat-native-2.0.16-src.tar.gz .
+ADD --checksum=sha256:785fdd99a202f442b085bc718d2fbeb393b85979aa4a2943302118c4acd68630 --unpack=true https://archive.apache.org/dist/tomcat/tomcat-connectors/native/2.0.16/source/tomcat-native-2.0.16-src.tar.gz .
 
 RUN mv tomcat-native*/ tomcat-native/
 
